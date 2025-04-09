@@ -1,0 +1,6 @@
+@AYEDAS_OSOS_HostAddress = http://localhost:5058
+
+GET {{AYEDAS_OSOS_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
