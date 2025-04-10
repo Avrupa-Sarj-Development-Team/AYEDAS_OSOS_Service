@@ -1,6 +1,12 @@
 using AYEDAS_OSOS.Services;
 using Microsoft.AspNetCore.Diagnostics;
 using System.Text.Json;
+using Microsoft.OpenApi.Models;
+using OfficeOpenXml;
+using System.Text;
+
+// EPPlus lisans ayarı
+ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +49,9 @@ builder.Services.AddScoped<DatabaseService>();
 // ConsumptionController'ı AddScoped olarak ekle
 builder.Services.AddScoped<AYEDAS_OSOS.Controllers.ConsumptionController>();
 
+// Excel export servisi ekle
+builder.Services.AddScoped<ExcelExportService>();
+
 // Tüketim verisi aktarma servisini ekle
 builder.Services.AddHostedService<ConsumptionDataImportService>();
 
@@ -70,6 +79,24 @@ app.UseExceptionHandler(appError =>
         }
     });
 });
+
+// Veritabanı yapılandırmasını kontrol et ve tabloların var olduğundan emin ol
+using (var scope = app.Services.CreateScope())
+{
+    var dbService = scope.ServiceProvider.GetRequiredService<DatabaseService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        logger.LogInformation("Veritabanı yapılandırması kontrol ediliyor...");
+        await dbService.EnsureMeterOsosConsumptionTableExistsAsync();
+        logger.LogInformation("Veritabanı yapılandırması tamamlandı.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Veritabanı yapılandırması sırasında hata oluştu");
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

@@ -54,9 +54,12 @@ public class ConsumptionController : ControllerBase
             
             _logger.LogInformation($"Toplam {installationList.InstallationList.Count} adet tesisat bulundu");
             
-            // Tarih aralığını belirle
-            var startDate = DateTime.Now.AddMonths(-24);
-            var monthYearPairs = GenerateMonthYearPairs(startDate, 24);
+            // Belirli tarih aralığı için günleri oluştur (03.04.2025 - 09.04.2025)
+            var startDate = new DateTime(2025, 4, 3);
+            var endDate = new DateTime(2025, 4, 9);
+            var dateRange = GenerateDateRange(startDate, endDate);
+            
+            _logger.LogInformation($"Veri çekilecek tarih aralığı: {startDate:dd.MM.yyyy} - {endDate:dd.MM.yyyy}, toplam {dateRange.Count} gün");
             
             int totalSuccess = 0;
             int totalError = 0;
@@ -76,8 +79,8 @@ public class ConsumptionController : ControllerBase
                 
                 _logger.LogInformation($"Tesisat işleniyor: {tesisatNo}, ETSO: {etso}, Müşteri: {installation.CustomerName}");
                 
-                // Her ay için döngü
-                foreach (var (month, year) in monthYearPairs)
+                // Her bir gün için veri çek
+                foreach (var date in dateRange)
                 {
                     try
                     {
@@ -86,33 +89,36 @@ public class ConsumptionController : ControllerBase
                         if (string.IsNullOrEmpty(accessToken))
                         {
                             _logger.LogError("API isteği için geçerli token alınamadı");
-                            errorList.Add($"Tesisat: {tesisatNo}, Ay: {month}/{year}, Hata: Token alınamadı");
+                            errorList.Add($"Tesisat: {tesisatNo}, Tarih: {date:dd.MM.yyyy}, Hata: Token alınamadı");
                             totalError++;
                             continue;
                         }
                         
-                        string meterMonth = $"{year}-{month:D2}";
-                        string fromDate = $"{year}-{month:D2}-01 00:00:00";
+                        string meterMonth = $"{date.Year}-{date.Month:D2}";
+                        string fromDate = $"{date.Year}-{date.Month:D2}-{date.Day:D2} 00:00:00";
+                        string toDate = $"{date.Year}-{date.Month:D2}-{date.Day:D2} 23:59:59";
+                        
+                        _logger.LogInformation($"Tesisat {tesisatNo} için {date:dd.MM.yyyy} tarihli veriler çekiliyor");
                         
                         // Saatlik tüketim verilerini al
                         var meterData = await GetHourlyMeterData(accessToken, meterMonth, tesisatNo, fromDate);
                         
                         if (meterData == null || meterData.Items == null || !meterData.Items.ContainsKey(tesisatNo) || meterData.Items[tesisatNo] == null || !meterData.Items[tesisatNo].Any())
                         {
-                            _logger.LogWarning($"Tesisat için veri bulunamadı: {tesisatNo}, Ay: {meterMonth}");
+                            _logger.LogWarning($"Tesisat için veri bulunamadı: {tesisatNo}, Tarih: {date:dd.MM.yyyy}");
                             continue;
                         }
                         
-                        _logger.LogInformation($"Tesisat için {meterData.Items[tesisatNo].Count} adet veri bulundu: {tesisatNo}, Ay: {meterMonth}");
+                        _logger.LogInformation($"Tesisat için {meterData.Items[tesisatNo].Count} adet veri bulundu: {tesisatNo}, Tarih: {date:dd.MM.yyyy}");
                         
                         // Verileri veritabanına kaydet
-                        await SaveHourlyConsumptionDataToDatabase(meterData.Items[tesisatNo], tesisatNo, month, year);
+                        await SaveHourlyConsumptionDataToDatabase(meterData.Items[tesisatNo], tesisatNo, date.Month, date.Year);
                         totalSuccess++;
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"Tesisat için veri alınırken hata oluştu: {tesisatNo}, Ay: {month}/{year}");
-                        errorList.Add($"Tesisat: {tesisatNo}, Ay: {month}/{year}, Hata: {ex.Message}");
+                        _logger.LogError(ex, $"Tesisat için veri alınırken hata oluştu: {tesisatNo}, Tarih: {date:dd.MM.yyyy}");
+                        errorList.Add($"Tesisat: {tesisatNo}, Tarih: {date:dd.MM.yyyy}, Hata: {ex.Message}");
                         totalError++;
                     }
                     
@@ -469,6 +475,19 @@ public class ConsumptionController : ControllerBase
             return false;
             
         return DateTime.TryParse(dateTimeStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+    }
+    
+    private List<DateTime> GenerateDateRange(DateTime startDate, DateTime endDate)
+    {
+        var result = new List<DateTime>();
+        
+        // Başlangıç ve bitiş tarihleri dahil olmak üzere her gün için liste oluştur
+        for (var date = startDate; date <= endDate; date = date.AddDays(1))
+        {
+            result.Add(date);
+        }
+        
+        return result;
     }
     
     private List<(int month, int year)> GenerateMonthYearPairs(DateTime startDate, int numberOfMonths)
