@@ -11,20 +11,17 @@ public class TokenController : ControllerBase
 {
     private readonly ILogger<TokenController> _logger;
     private readonly TokenService _tokenService;
-    private readonly ApiService _apiService;
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
 
     public TokenController(
         ILogger<TokenController> logger,
         TokenService tokenService,
-        ApiService apiService,
         IConfiguration configuration,
         IWebHostEnvironment environment)
     {
         _logger = logger;
         _tokenService = tokenService;
-        _apiService = apiService;
         _configuration = configuration;
         _environment = environment;
     }

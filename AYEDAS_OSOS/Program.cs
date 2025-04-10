@@ -37,9 +37,6 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<TokenService>());
 
-// API servisini ekle
-builder.Services.AddScoped<ApiService>();
-
 // Veritabanı servisini ekle
 builder.Services.AddScoped<DatabaseService>();
 

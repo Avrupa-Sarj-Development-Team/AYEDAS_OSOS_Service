@@ -13,7 +13,6 @@ namespace AYEDAS_OSOS.Controllers;
 public class ConsumptionController : ControllerBase
 {
     private readonly ILogger<ConsumptionController> _logger;
-    private readonly ApiService _apiService;
     private readonly TokenService _tokenService;
     private readonly DatabaseService _databaseService;
     private readonly IConfiguration _configuration;
@@ -21,13 +20,11 @@ public class ConsumptionController : ControllerBase
 
     public ConsumptionController(
         ILogger<ConsumptionController> logger,
-        ApiService apiService,
         TokenService tokenService,
         DatabaseService databaseService,
         IConfiguration configuration)
     {
         _logger = logger;
-        _apiService = apiService;
         _tokenService = tokenService;
         _databaseService = databaseService;
         _configuration = configuration;
