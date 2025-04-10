@@ -48,7 +48,8 @@ public class ConsumptionDataImportService : BackgroundService
                     using (var scope = _serviceProvider.CreateScope())
                     {
                         var consumptionController = scope.ServiceProvider.GetRequiredService<ConsumptionController>();
-                        await consumptionController.ImportConsumptionData();
+                        // AYEDAS verilerini çek
+                        await consumptionController.ImportAyedasConsumptionData();
                     }
 
                     _logger.LogInformation("Planlanan tüketim verisi aktarma işlemi tamamlandı");

@@ -53,29 +53,29 @@ public class ApiService
         
         try
         {
-            // TokenService'den ID token al
-            string idToken = _tokenService.GetIdToken();
+            // TokenService'den Access token al
+            string accessToken = _tokenService.GetAccessToken();
             
-            if (string.IsNullOrEmpty(idToken))
+            if (string.IsNullOrEmpty(accessToken))
             {
-                _logger.LogWarning("ID token boş, yenileme yapılıyor");
-                // ID token alınamadı, yenileme yap
+                _logger.LogWarning("Access token boş, yenileme yapılıyor");
+                // Access token alınamadı, yenileme yap
                 var tokenResult = await _tokenService.GetValidTokenAsync(true);
                 
-                if (tokenResult == null || string.IsNullOrEmpty(tokenResult.IdToken))
+                if (tokenResult == null || string.IsNullOrEmpty(tokenResult.AccessToken))
                 {
-                    _logger.LogError("ID token alınamadı");
+                    _logger.LogError("Access token alınamadı");
                     return null;
                 }
                 
-                idToken = tokenResult.IdToken;
+                accessToken = tokenResult.AccessToken;
             }
             
-            _logger.LogInformation($"API isteği için ID token kullanılıyor: {idToken.Substring(0, Math.Min(20, idToken.Length))}...");
+            _logger.LogInformation($"API isteği için Access token kullanılıyor: {accessToken.Substring(0, Math.Min(20, accessToken.Length))}...");
 
             // HTTP istek header'larını ayarla
             _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", idToken);
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "AYEDAS_OSOS_Client");
             
@@ -117,7 +117,7 @@ public class ApiService
                     // Token yenileme ve tekrar deneme
                     var newTokenData = await _tokenService.GetValidTokenAsync(true);
                     
-                    if (newTokenData != null && !string.IsNullOrEmpty(newTokenData.IdToken))
+                    if (newTokenData != null && !string.IsNullOrEmpty(newTokenData.AccessToken))
                     {
                         _logger.LogInformation("Token yenilendi, istek tekrarlanıyor...");
                         return await SendRequestWithToken<T>(url, method);

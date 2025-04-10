@@ -30,4 +30,7 @@ public class TokenModel
     
     [JsonProperty("scope")]
     public string Scope { get; set; } = string.Empty;
+    
+    [JsonProperty("ConsumerID")] 
+    public string? ConsumerID { get; set; }
 } 

@@ -43,22 +43,23 @@ public class InstallationController : ControllerBase
                 return BadRequest("Tesisat numarası belirtilmelidir.");
             }
             
-            // ID Token alınıyor
-            string idToken = _tokenService.GetIdToken();
+            // Access Token alınıyor
+            var token = await _tokenService.GetValidTokenAsync(false);
+            string accessToken = token?.AccessToken ?? string.Empty;
             
-            if (string.IsNullOrEmpty(idToken))
+            if (string.IsNullOrEmpty(accessToken))
             {
-                _logger.LogWarning("ID token boş, yenileme yapılıyor");
-                // ID token yenileme
-                var tokenData = await _tokenService.GetValidTokenAsync(true);
+                _logger.LogWarning("Access token boş, yenileme yapılıyor");
+                // Access token yenileme
+                var refreshedToken = await _tokenService.GetValidTokenAsync(true);
                 
-                if (tokenData == null || string.IsNullOrEmpty(tokenData.IdToken))
+                if (refreshedToken == null || string.IsNullOrEmpty(refreshedToken.AccessToken))
                 {
-                    _logger.LogError("ID token alınamadı");
+                    _logger.LogError("Access token alınamadı");
                     return StatusCode(500, new { message = "Kimlik doğrulama servisinden token alınamadı." });
                 }
                 
-                idToken = tokenData.IdToken;
+                accessToken = refreshedToken.AccessToken;
             }
 
             // API ayarlarını al
@@ -74,8 +75,8 @@ public class InstallationController : ControllerBase
             // Yeni bir HttpRequestMessage oluştur
             var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
             
-            // ID Token'ı Authorization header'a ekle
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", idToken);
+            // Access Token'ı Authorization header'a ekle
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             
             // İsteği gönder
@@ -93,9 +94,9 @@ public class InstallationController : ControllerBase
                     // Token yenileme
                     await _tokenService.RefreshTokenAsync();
                     
-                    // Yeniden ID token al
-                    idToken = _tokenService.GetIdToken();
-                    if (!string.IsNullOrEmpty(idToken))
+                    // Yeniden Access token al
+                    accessToken = _tokenService.GetAccessToken();
+                    if (!string.IsNullOrEmpty(accessToken))
                     {
                         _logger.LogInformation("Token yenilendi, işlem tekrarlanıyor...");
                         return await GetInfoByTesisatNo(tesisatNo);
@@ -138,22 +139,22 @@ public class InstallationController : ControllerBase
         {
             _logger.LogInformation($"Tüm tesisatlar sorgusu başlatıldı: Sayfa={page}, Boyut={pageSize}");
             
-            // ID Token alınıyor
-            string idToken = _tokenService.GetIdToken();
+            // Access Token alınıyor
+            string accessToken = _tokenService.GetAccessToken();
             
-            if (string.IsNullOrEmpty(idToken))
+            if (string.IsNullOrEmpty(accessToken))
             {
-                _logger.LogWarning("ID token boş, yenileme yapılıyor");
-                // ID token yenileme
+                _logger.LogWarning("Access token boş, yenileme yapılıyor");
+                // Access token yenileme
                 var tokenData = await _tokenService.GetValidTokenAsync(true);
                 
-                if (tokenData == null || string.IsNullOrEmpty(tokenData.IdToken))
+                if (tokenData == null || string.IsNullOrEmpty(tokenData.AccessToken))
                 {
-                    _logger.LogError("ID token alınamadı");
+                    _logger.LogError("Access token alınamadı");
                     return StatusCode(500, new { message = "Kimlik doğrulama servisinden token alınamadı." });
                 }
                 
-                idToken = tokenData.IdToken;
+                accessToken = tokenData.AccessToken;
             }
 
             // API ayarlarını al
@@ -169,8 +170,8 @@ public class InstallationController : ControllerBase
             // Yeni bir HttpRequestMessage oluştur
             var request = new HttpRequestMessage(HttpMethod.Get, apiUrl);
             
-            // ID Token'ı Authorization header'a ekle
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", idToken);
+            // Access Token'ı Authorization header'a ekle
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             
             // İsteği gönder
@@ -188,9 +189,9 @@ public class InstallationController : ControllerBase
                     // Token yenileme
                     await _tokenService.RefreshTokenAsync();
                     
-                    // Yeniden ID token al
-                    idToken = _tokenService.GetIdToken();
-                    if (!string.IsNullOrEmpty(idToken))
+                    // Yeniden Access token al
+                    accessToken = _tokenService.GetAccessToken();
+                    if (!string.IsNullOrEmpty(accessToken))
                     {
                         _logger.LogInformation("Token yenilendi, işlem tekrarlanıyor...");
                         return await GetAllInstallations(page, pageSize);

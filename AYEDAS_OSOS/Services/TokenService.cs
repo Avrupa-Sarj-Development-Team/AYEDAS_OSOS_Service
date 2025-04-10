@@ -12,7 +12,7 @@ public class TokenService : IHostedService, IDisposable
     private Timer? _timer;
     private readonly HttpClient _httpClient;
     private readonly IWebHostEnvironment _environment;
-    private string _latestIdToken = string.Empty;
+    private string _latestAccessToken = string.Empty;
     private DateTime _lastRefreshTime = DateTime.MinValue;
 
     public TokenService(ILogger<TokenService> logger, IConfiguration configuration, IWebHostEnvironment environment)
@@ -30,8 +30,8 @@ public class TokenService : IHostedService, IDisposable
         // İlk başlangıçta token yenileme işlemini gerçekleştir
         await RefreshTokenAsync();
 
-        // Belirtilen aralıkta token yenileme zamanlayıcısını başlat (1 dakikada bir)
-        int refreshInterval = 4; // dakika cinsinden
+        // Belirtilen aralıkta token yenileme zamanlayıcısını başlat (4 dakikada bir)
+        int refreshInterval = _configuration.GetValue<int>("TokenSettings:RefreshIntervalMinutes", 4);
         _timer = new Timer(DoRefreshToken, null, TimeSpan.FromMinutes(refreshInterval), TimeSpan.FromMinutes(refreshInterval));
 
         return;
@@ -42,43 +42,42 @@ public class TokenService : IHostedService, IDisposable
         RefreshTokenAsync().ConfigureAwait(false);
     }
     
-    // ID Token'ı döndüren metot
-    public string GetIdToken()
+    // Access Token'ı döndüren metot
+    public string GetAccessToken()
     {
-        if (string.IsNullOrEmpty(_latestIdToken) || DateTime.Now.Subtract(_lastRefreshTime).TotalMinutes > 1)
+        if (string.IsNullOrEmpty(_latestAccessToken) || DateTime.Now.Subtract(_lastRefreshTime).TotalMinutes > 4)
         {
-            _logger.LogWarning("ID Token boş veya süresi dolmuş, yenileme gerekiyor");
-            // Token'ı yenileme isteği yapılmalı, ancak burası senkron olmalı
-            // Bu nedenle null döndürüp, çağıran tarafta yenileme işlemi başlatılmalı
+            _logger.LogWarning("Access Token boş veya süresi dolmuş, yenileme gerekiyor");
             return string.Empty;
         }
         
-        return _latestIdToken;
+        return _latestAccessToken;
     }
 
     public async Task<TokenModel?> GetValidTokenAsync(bool forceRefresh = false)
     {
         // Eğer zorla yenileme isteniyorsa veya token boşsa veya süresi dolduysa
-        if (forceRefresh || string.IsNullOrEmpty(_latestIdToken) || DateTime.Now.Subtract(_lastRefreshTime).TotalMinutes > 1)
+        if (forceRefresh || string.IsNullOrEmpty(_latestAccessToken) || DateTime.Now.Subtract(_lastRefreshTime).TotalMinutes > 2) // 4 dakika yerine 2 dakika süresi olan tokenleri de yenile
         {
-            _logger.LogInformation("Token yeniliyor...");
+            _logger.LogInformation("Token yeniliyor (forceRefresh: {0}, tokenEmpty: {1}, timeElapsed: {2:0.00} dakika)", 
+                forceRefresh, 
+                string.IsNullOrEmpty(_latestAccessToken),
+                DateTime.Now.Subtract(_lastRefreshTime).TotalMinutes);
+            
             await RefreshTokenAsync();
         }
         
-        if (string.IsNullOrEmpty(_latestIdToken))
+        if (string.IsNullOrEmpty(_latestAccessToken))
         {
             _logger.LogError("Geçerli token alınamadı");
             return null;
         }
         
-        // Burada sahte bir TokenModel oluşturuyoruz
-        // Gerçekte ID Token ile çalıştığımız için tam modeli doldurmuyoruz
         return new TokenModel
         {
-            IdToken = _latestIdToken,
+            AccessToken = _latestAccessToken,
             TokenType = "Bearer",
-            ExpiresIn = 60, // 1 dakika
-            AccessToken = _latestIdToken, // ID Token'ı Access Token olarak gösteriyoruz
+            ExpiresIn = 240, // 4 dakika
             RefreshExpiresIn = 1800
         };
     }
@@ -87,64 +86,57 @@ public class TokenService : IHostedService, IDisposable
     {
         try
         {
-            string refreshTokenFile = GetAbsolutePath(_configuration["TokenSettings:RefreshTokenFile"] ?? "refreshToken.txt");
-            string tokenUrl = _configuration["TokenSettings:TokenUrl"] ?? "https://identity.enerjisa.com.tr/auth/realms/OsosWeb/protocol/openid-connect/token";
-            string clientId = _configuration["TokenSettings:ClientId"] ?? "ososayedas-react";
+            string tokenUrl = _configuration["TokenSettings:TokenUrl"] ?? "https://mdmsaatlik.ayedas.com.tr/ayedas/mdm-api/oauth/token";
+            string clientId = _configuration["TokenSettings:ClientId"] ?? "";
+            string clientSecret = _configuration["TokenSettings:ClientSecret"] ?? "";
+            string consumerId = _configuration["TokenSettings:ConsumerId"] ?? "MDMAYPRD";
 
             _logger.LogInformation($"Token URL: {tokenUrl}");
             _logger.LogInformation($"Client ID: {clientId}");
-            _logger.LogInformation($"Refresh Token Dosyası: {refreshTokenFile}");
-
-            // Kullanıcıdan refresh token'ı oku
-            string refreshToken = "";
-            if (File.Exists(refreshTokenFile))
-            {
-                refreshToken = await File.ReadAllTextAsync(refreshTokenFile);
-                refreshToken = refreshToken.Trim(); // Boşlukları temizle
-                _logger.LogInformation($"Refresh token okundu: {refreshToken.Substring(0, Math.Min(20, refreshToken.Length))}...");
-            }
-            else
-            {
-                _logger.LogWarning($"Refresh token dosyası bulunamadı: {refreshTokenFile}. Lütfen geçerli bir refresh token ekleyin.");
-                // Dosya yoksa oluştur ve örnek token ekle
-                Directory.CreateDirectory(Path.GetDirectoryName(refreshTokenFile) ?? string.Empty);
-                File.WriteAllText(refreshTokenFile, "REFRESH_TOKEN_BURAYA_EKLEYIN");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(refreshToken))
-            {
-                _logger.LogWarning("Refresh token boş, işlem yapılmayacak.");
-                return;
-            }
+            _logger.LogInformation($"Consumer ID: {consumerId}");
 
             // HTTP başlıklarını temizle
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "AYEDAS_OSOS_Client");
             
-            // HTTP istek parametrelerini oluştur
-            var formContent = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("grant_type", "refresh_token"),
-                new KeyValuePair<string, string>("refresh_token", refreshToken),
-                new KeyValuePair<string, string>("client_id", clientId)
-            });
-
-            // Form verilerini görüntüle
-            string formContentString = await formContent.ReadAsStringAsync();
-            _logger.LogInformation($"Form içeriği: {formContentString}");
-
-            // İsteği log'a yaz
-            _logger.LogInformation($"Token isteği gönderiliyor: grant_type=refresh_token, client_id={clientId}");
-
-            // Token isteği gönder
-            var response = await _httpClient.PostAsync(tokenUrl, formContent);
+            // URL'yi query string parametreleri ile oluştur
+            var queryParameters = $"?grant_type=client_credentials&client_id={Uri.EscapeDataString(clientId)}&client_secret={Uri.EscapeDataString(clientSecret)}&consumerID={Uri.EscapeDataString(consumerId)}";
+            string fullUrl = tokenUrl + queryParameters;
+            
+            _logger.LogInformation($"Tam URL: {fullUrl}");
+            
+            // Token isteği gönder - POST metodu ve boş body ile
+            var response = await _httpClient.PostAsync(fullUrl, null);
             string responseContent = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError($"Token isteği başarısız! HTTP Kodu: {response.StatusCode}, Yanıt: {responseContent}");
-                return;
+                
+                // Alternatif metod dene - FormUrlEncoded yerine query string
+                _logger.LogInformation("Alternatif metod deneniyor...");
+                var formContent = new FormUrlEncodedContent(new[]
+                {
+                    new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                    new KeyValuePair<string, string>("client_id", clientId),
+                    new KeyValuePair<string, string>("client_secret", clientSecret),
+                    new KeyValuePair<string, string>("consumerID", consumerId)
+                });
+
+                string formContentString = await formContent.ReadAsStringAsync();
+                _logger.LogInformation($"Form içeriği: {formContentString}");
+
+                _logger.LogInformation($"Token isteği gönderiliyor: grant_type=client_credentials, client_id={clientId}, consumerID={consumerId}");
+                
+                response = await _httpClient.PostAsync(tokenUrl, formContent);
+                responseContent = await response.Content.ReadAsStringAsync();
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"İkinci yöntem de başarısız! HTTP Kodu: {response.StatusCode}, Yanıt: {responseContent}");
+                    return;
+                }
             }
 
             _logger.LogInformation("Token isteği başarılı!");
@@ -158,24 +150,20 @@ public class TokenService : IHostedService, IDisposable
                 return;
             }
 
-            // ID Token'ı değişkende sakla
-            if (!string.IsNullOrEmpty(tokenResponse.IdToken))
+            // Access Token'ı değişkende sakla
+            if (!string.IsNullOrEmpty(tokenResponse.AccessToken))
             {
-                _latestIdToken = tokenResponse.IdToken;
+                _latestAccessToken = tokenResponse.AccessToken;
                 _lastRefreshTime = DateTime.Now;
                 
-                _logger.LogInformation($"Yeni ID token alındı: {_latestIdToken.Substring(0, Math.Min(20, _latestIdToken.Length))}...");
+                _logger.LogInformation($"Yeni Access token alındı: {_latestAccessToken.Substring(0, Math.Min(20, _latestAccessToken.Length))}...");
                 _logger.LogInformation($"Token yenileme zamanı: {_lastRefreshTime:yyyy-MM-dd HH:mm:ss}");
             }
             else
             {
-                _logger.LogError("Yanıtta ID token bulunamadı!");
+                _logger.LogError("Yanıtta Access token bulunamadı!");
                 return;
             }
-
-            // Yeni refresh token'ı dosyaya kaydet
-            await File.WriteAllTextAsync(refreshTokenFile, tokenResponse.RefreshToken);
-            _logger.LogInformation($"Yeni refresh token kaydedildi: {refreshTokenFile}");
             
             // Token yanıtını JSON dosyasına kaydet (debugging için)
             string accessTokenFile = GetAbsolutePath(_configuration["TokenSettings:AccessTokenFile"] ?? "accessToken.json");
@@ -183,19 +171,12 @@ public class TokenService : IHostedService, IDisposable
             await File.WriteAllTextAsync(accessTokenFile, responseContent);
             _logger.LogInformation($"Token yanıtı kaydedildi: {accessTokenFile}");
 
-            _logger.LogInformation("Token başarıyla yenilendi. Bir sonraki yenileme 1 dakika sonra gerçekleşecek.");
+            _logger.LogInformation("Token başarıyla yenilendi. Bir sonraki yenileme 4 dakika sonra gerçekleşecek.");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Token yenileme sırasında hata oluştu");
         }
-    }
-    
-    private async Task TryPasswordGrantAsync(string tokenUrl, string clientId, string accessTokenFile)
-    {
-        _logger.LogInformation("Refresh token ile token alma başarısız oldu, password grant deneniyor");
-        
-        // Bu örnek bir şablon, gerçek implementasyon sizin identity provider yapınıza bağlı olacaktır
     }
 
     private string GetAbsolutePath(string relativePath)
